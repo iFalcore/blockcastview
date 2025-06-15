@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Stream</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    .stream-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .stream-player {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .video-wrapper {
+      position: relative;
+      width: 100%;
+      padding-bottom: 56.25%; /* 16:9 */
+      background: #000;
+    }
+
+    video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .stream-controls {
+      padding: 20px;
+      background: white;
+      border-top: 1px solid #eee;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .stream-input {
+      flex: 1;
+      min-width: 200px;
+      padding: 12px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+
+    .stream-input:focus {
+      outline: none;
+      border-color: #007bff;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: #007bff;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #0056b3;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #545b62;
+    }
+
+    .btn:disabled {
+      background: #e0e0e0;
+      color: #999;
+      cursor: not-allowed;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+
+    .stat-label {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #333;
+    }
+
+    .status-message {
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+
+    .status-message.error {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    .status-message.success {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .loading-spinner {
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #007bff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .stream-controls {
+        flex-direction: column;
+      }
+      
+      .stream-input {
+        width: 100%;
+      }
+      
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="stream-container">
+    <!-- Status Message -->
+    <div id="statusMessage" class="status-message hidden">
+      <span id="statusIcon"></span>
+      <span id="statusText">Ready to connect...</span>
+    </div>
+
+    <!-- Video Player -->
+    <div class="stream-player">
+      <div class="video-wrapper">
+        <video id="videoPlayer" controls muted></video>
+      </div>
+      <div class="stream-controls">
+        <input 
+          type="text" 
+          id="streamNameInput" 
+          class="stream-input" 
+          placeholder="Enter stream name (e.g., TestStream)" 
+          value="TestStream"
+        />
+        <button id="connectBtn" class="btn btn-primary" onclick="handleConnect()">
+          <span>🔗</span> Connect
+        </button>
+        <button id="playBtn" class="btn btn-primary hidden" onclick="handlePlay()">
+          <span>▶️</span> Play
+        </button>
+        <button id="stopBtn" class="btn btn-secondary hidden" onclick="handleStop()">
+          <span>⏹️</span> Stop
+        </button>
+      </div>
+    </div>
+
+    <!-- Statistics -->
+    <div id="statsSection" class="stats-grid hidden">
+      <div class="stat-card">
+        <div class="stat-label">
+          <span>📡</span> Stream Name
+        </div>
+        <div class="stat-value" id="statStreamName">-</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">
+          <span>📊</span> Latest Chunk
+        </div>
+        <div class="stat-value" id="statLatestChunk">-</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">
+          <span>📦</span> Chunks Loaded
+        </div>
+        <div class="stat-value" id="statChunksLoaded">0</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">
+          <span>⏱️</span> Buffer
+        </div>
+        <div class="stat-value" id="statBuffer">0.0s</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">
+          <span>💾</span> Data Downloaded
+        </div>
+        <div class="stat-value" id="statBytes">0 KB</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-label">
+          <span>🌐</span> Network
+        </div>
+        <div class="stat-value">SKALE Testnet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load HLS.js -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.11/dist/hls.min.js"></script>
+  <script type="module">
+    import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.14.3/dist/ethers.min.js";
+
+    // Configuration
+    const CONTRACT_ADDRESS = "0x949cb09dc696fe03a729eC31756A08096d93D4Ca";
+    const RPC_URL = "https://testnet.skalenodes.com/v1/aware-fake-trim-testnet";
+
+    const ABI = [
+      "function getLatestIndex(string memory streamName) view returns (uint256)",
+      "function getChunk(uint256 index) view returns (uint256, uint256, bytes)"
+    ];
+
+    // State
+    let provider, contract, hls;
+    let isConnected = false;
+    let isStreaming = false;
+    let streamName = "";
+    let lastChunkIndex = -1;
+    let pollingInterval;
+    let statsInterval;
+    let chunksLoaded = 0;
+    let bytesDownloaded = 0;
+    let chunkCache = new Map();
+
+    // Elements
+    const video = document.getElementById('videoPlayer');
+    const statusMessage = document.getElementById('statusMessage');
+    const statusText = document.getElementById('statusText');
+    const statusIcon = document.getElementById('statusIcon');
+    const connectBtn = document.getElementById('connectBtn');
+    const playBtn = document.getElementById('playBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statsSection = document.getElementById('statsSection');
+
+    // Show status message
+    function showStatus(message, type = 'info') {
+      statusMessage.className = `status-message ${type}`;
+      statusText.textContent = message;
+      
+      if (type === 'loading') {
+        statusIcon.innerHTML = '<div class="loading-spinner"></div>';
+      } else if (type === 'error') {
+        statusIcon.textContent = '❌';
+      } else if (type === 'success') {
+        statusIcon.textContent = '✅';
+      } else {
+        statusIcon.textContent = 'ℹ️';
+      }
+      
+      statusMessage.classList.remove('hidden');
+    }
+
+    // Update statistics
+    function updateStats() {
+      document.getElementById('statStreamName').textContent = streamName || '-';
+      document.getElementById('statLatestChunk').textContent = lastChunkIndex >= 0 ? lastChunkIndex : '-';
+      document.getElementById('statChunksLoaded').textContent = chunksLoaded;
+      
+      const mb = bytesDownloaded / (1024 * 1024);
+      document.getElementById('statBytes').textContent = 
+        mb > 1 ? `${mb.toFixed(2)} MB` : `${(bytesDownloaded / 1024).toFixed(2)} KB`;
+      
+      if (video.buffered.length > 0) {
+        const buffered = video.buffered.end(video.buffered.length - 1) - video.currentTime;
+        document.getElementById('statBuffer').textContent = `${Math.max(0, buffered).toFixed(1)}s`;
+      }
+    }
+
+    // Connect to blockchain
+    async function handleConnect() {
+      streamName = document.getElementById('streamNameInput').value.trim();
+      
+      if (!streamName) {
+        showStatus('Please enter a stream name', 'error');
+        return;
+      }
+
+      try {
+        showStatus('Connecting to blockchain...', 'loading');
+        
+        provider = new ethers.JsonRpcProvider(RPC_URL);
+        contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
+
+        const latestIndex = await contract.getLatestIndex(streamName);
+        
+        showStatus(`Connected! Stream "${streamName}" has ${latestIndex} chunks`, 'success');
+        
+        isConnected = true;
+        connectBtn.classList.add('hidden');
+        playBtn.classList.remove('hidden');
+        statsSection.classList.remove('hidden');
+        
+        // Start updating stats
+        statsInterval = setInterval(updateStats, 500);
+        updateStats();
+
+      } catch (error) {
+        showStatus(`Connection failed: ${error.message}`, 'error');
+        console.error('Connection error:', error);
+      }
+    }
+
+    // Create a custom loader for HLS.js
+    class BlockchainLoader {
+      constructor(config) {
+        this.config = config;
+      }
+
+      destroy() {}
+
+      abort() {}
+
+      load(context, config, callbacks) {
+        const { url } = context;
+        
+        if (url.startsWith('chunk://')) {
+          // Extract chunk index from URL
+          const chunkIndex = parseInt(url.replace('chunk://', ''));
+          this.loadChunk(chunkIndex, callbacks);
+        } else if (url.startsWith('data:')) {
+          // Load data URL directly
+          const data = url.split(',')[1];
+          const bytes = Uint8Array.from(atob(data), c => c.charCodeAt(0));
+          callbacks.onSuccess({ data: bytes }, context, { url });
+        }
+      }
+
+      async loadChunk(index, callbacks) {
+        try {
+          // Check cache first
+          if (chunkCache.has(index)) {
+            const data = chunkCache.get(index);
+            callbacks.onSuccess({ data }, { url: `chunk://${index}` }, {});
+            return;
+          }
+
+          // Load from blockchain
+          const [, , data] = await contract.getChunk(index);
+          const buffer = ethers.getBytes(data);
+          const chunk = new Uint8Array(buffer);
+          
+          // Cache the chunk
+          chunkCache.set(index, chunk);
+          
+          bytesDownloaded += chunk.length;
+          chunksLoaded++;
+          lastChunkIndex = Math.max(lastChunkIndex, index);
+          
+          callbacks.onSuccess({ data: chunk }, { url: `chunk://${index}` }, {});
+        } catch (error) {
+          callbacks.onError({ code: 0, text: error.message }, { url: `chunk://${index}` }, {});
+        }
+      }
+    }
+
+    // Generate dynamic m3u8 playlist
+    async function generatePlaylist() {
+      const latestIndex = Number(await contract.getLatestIndex(streamName));
+      const startIndex = Math.max(0, lastChunkIndex);
+      const endIndex = latestIndex - 1;
+      
+      let playlist = `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:2
+#EXT-X-MEDIA-SEQUENCE:${startIndex}
+`;
+
+      for (let i = startIndex; i <= endIndex && i < startIndex + 10; i++) {
+        playlist += `#EXTINF:1.0,
+chunk://${i}
+`;
+      }
+
+      return 'data:application/x-mpegurl;base64,' + btoa(playlist);
+    }
+
+    // Start streaming with HLS.js
+    async function startHlsStream() {
+      if (Hls.isSupported()) {
+        // Create custom HLS config
+        const hlsConfig = {
+          loader: BlockchainLoader,
+          debug: false,
+          enableWorker: false,
+          lowLatencyMode: true,
+          backBufferLength: 0,
+          maxBufferLength: 10,
+          maxMaxBufferLength: 30,
+          manifestLoadingTimeOut: 10000,
+          manifestLoadingMaxRetry: 2,
+          levelLoadingTimeOut: 10000,
+          levelLoadingMaxRetry: 4,
+          fragLoadingTimeOut: 20000,
+          fragLoadingMaxRetry: 6
+        };
+
+        hls = new Hls(hlsConfig);
+        
+        // Generate initial playlist
+        const playlistUrl = await generatePlaylist();
+        
+        hls.loadSource(playlistUrl);
+        hls.attachMedia(video);
+        
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => {});
+          showStatus('Stream started', 'success');
+        });
+        
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            console.error('HLS fatal error:', data);
+            showStatus('Playback error', 'error');
+          }
+        });
+        
+        // Periodically update playlist
+        pollingInterval = setInterval(async () => {
+          if (hls && !hls.media.paused) {
+            const newPlaylist = await generatePlaylist();
+            hls.recoverMediaError();
+          }
+        }, 5000);
+        
+      } else {
+        // Fallback for Safari/iOS - direct segment playback
+        fallbackPlayback();
+      }
+    }
+
+    // Fallback playback method
+    async function fallbackPlayback() {
+      showStatus('Using fallback playback method...', 'loading');
+      
+      try {
+        // Create a blob from chunks
+        const chunks = [];
+        const latestIndex = Number(await contract.getLatestIndex(streamName));
+        
+        // Load first few chunks
+        for (let i = Math.max(0, latestIndex - 5); i < latestIndex; i++) {
+          try {
+            const [, , data] = await contract.getChunk(i);
+            const buffer = ethers.getBytes(data);
+            chunks.push(new Uint8Array(buffer));
+            chunksLoaded++;
+            bytesDownloaded += buffer.length;
+          } catch (err) {
+            console.error(`Error loading chunk ${i}:`, err);
+          }
+        }
+        
+        // Combine chunks
+        const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+        const combined = new Uint8Array(totalLength);
+        let offset = 0;
+        
+        for (const chunk of chunks) {
+          combined.set(chunk, offset);
+          offset += chunk.length;
+        }
+        
+        // Create blob and play
+        const blob = new Blob([combined], { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+        video.src = url;
+        
+        video.play().catch(() => {});
+        showStatus('Playing cached segments', 'success');
+        
+      } catch (error) {
+        showStatus('Fallback playback failed', 'error');
+        console.error('Fallback error:', error);
+      }
+    }
+
+    // Start streaming
+    async function handlePlay() {
+      isStreaming = true;
+      playBtn.classList.add('hidden');
+      stopBtn.classList.remove('hidden');
+      
+      showStatus('Initializing stream...', 'loading');
+      
+      // Get initial chunk index
+      const latestIndex = await contract.getLatestIndex(streamName);
+      if (latestIndex > 0) {
+        lastChunkIndex = Math.max(0, Number(latestIndex) - 10);
+      }
+      
+      // Try HLS.js first
+      await startHlsStream();
+    }
+
+    // Stop streaming
+    function handleStop() {
+      isStreaming = false;
+      
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+      }
+      
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+      
+      chunkCache.clear();
+      
+      playBtn.classList.remove('hidden');
+      stopBtn.classList.add('hidden');
+      
+      showStatus('Stream stopped', 'info');
+    }
+
+    // Video event handlers
+    video.addEventListener('play', () => {
+      showStatus('Playing', 'success');
+    });
+
+    video.addEventListener('waiting', () => {
+      showStatus('Buffering...', 'loading');
+    });
+
+    video.addEventListener('error', () => {
+      if (video.error) {
+        console.error('Video error:', video.error);
+        // Try fallback method
+        if (isStreaming && !hls) {
+          fallbackPlayback();
+        }
+      }
+    });
+
+    // Make functions global
+    window.handleConnect = handleConnect;
+    window.handlePlay = handlePlay;
+    window.handleStop = handleStop;
+
+    // Auto-connect if stream name is in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlStream = urlParams.get('stream');
+    if (urlStream) {
+      document.getElementById('streamNameInput').value = urlStream;
+      setTimeout(handleConnect, 1000);
+    }
+  </script>
+</body>
+</html>
